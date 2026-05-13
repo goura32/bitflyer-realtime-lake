@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.goura32.bitflyer-realtime-lake</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/Users/your-user/bitflyer-realtime-lake/.venv/bin/python</string>
+      <string>-m</string>
+      <string>bitflyer_realtime_lake</string>
+      <string>run</string>
+      <string>--config</string>
+      <string>/Users/your-user/bitflyer-realtime-lake/config.yaml</string>
+      <string>--workdir</string>
+      <string>/Users/your-user/bitflyer-realtime-lake</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/your-user/bitflyer-realtime-lake</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/your-user/bitflyer-realtime-lake/logs/launchd.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/your-user/bitflyer-realtime-lake/logs/launchd.stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>/Users/your-user/bitflyer-realtime-lake/.venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+  </dict>
+</plist>

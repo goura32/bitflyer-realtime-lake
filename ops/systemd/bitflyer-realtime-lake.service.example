@@ -1,0 +1,19 @@
+[Unit]
+Description=bitflyer-realtime-lake collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bitflyer
+Group=bitflyer
+WorkingDirectory=/opt/bitflyer-realtime-lake
+Environment=PATH=/opt/bitflyer-realtime-lake/.venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/bitflyer-realtime-lake/.venv/bin/python -m bitflyer_realtime_lake run --config /opt/bitflyer-realtime-lake/config.yaml --workdir /opt/bitflyer-realtime-lake
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target

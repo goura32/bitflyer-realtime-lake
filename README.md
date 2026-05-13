@@ -114,6 +114,34 @@ python -m bitflyer_realtime_lake init-db --config config.yaml
 
 `sql/001_create_tables.sql` を使って DB とテーブルを作成します。既定 database 名は `clickhouse` ですが、config で変更できます。
 
+## ローカル ClickHouse を docker-compose で起動する例
+
+ローカル検証用に [docker-compose.clickhouse.yaml](/Users/goura32/Documents/Codex/2026-05-13/python-github-public-bitflyer-realtime-api/docker-compose.clickhouse.yaml) を用意しています。
+
+起動:
+
+```bash
+docker compose -f docker-compose.clickhouse.yaml up -d
+```
+
+停止:
+
+```bash
+docker compose -f docker-compose.clickhouse.yaml down
+```
+
+初回起動後は `config.yaml` か `.env` を以下に合わせると、そのまま接続確認できます。
+
+```env
+CLICKHOUSE_HOST=127.0.0.1
+CLICKHOUSE_PORT=8123
+CLICKHOUSE_DATABASE=clickhouse
+CLICKHOUSE_USERNAME=clickhouse
+CLICKHOUSE_PASSWORD=clickhouse
+```
+
+データは `./local/clickhouse/data`、ログは `./local/clickhouse/logs` に保存されます。
+
 ## 起動方法
 
 通常運用:
@@ -139,6 +167,62 @@ spool 状態確認:
 ```bash
 python -m bitflyer_realtime_lake status --config config.yaml
 ```
+
+## systemd で運用する例
+
+Ubuntu や Raspberry Pi OS で常駐化する場合は、[ops/systemd/bitflyer-realtime-lake.service.example](/Users/goura32/Documents/Codex/2026-05-13/python-github-public-bitflyer-realtime-api/ops/systemd/bitflyer-realtime-lake.service.example) をたたき台として使えます。
+
+1. 配置先ディレクトリを決めます。例: `/opt/bitflyer-realtime-lake`
+2. 仮想環境を作成し、`pip install -e .` または `uv pip install -e .` を実行します
+3. `config.yaml` を配置し、必要なら `.env` を同じ workdir に置きます
+4. example ファイル内の `User`、`Group`、`WorkingDirectory`、`ExecStart` を実環境へ合わせて編集します
+5. `/etc/systemd/system/bitflyer-realtime-lake.service` として保存します
+6. 以下を実行します
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable bitflyer-realtime-lake
+sudo systemctl start bitflyer-realtime-lake
+sudo systemctl status bitflyer-realtime-lake
+```
+
+ログ確認:
+
+```bash
+journalctl -u bitflyer-realtime-lake -f
+```
+
+複数起動したい場合は、workdir ごとに別 service を作ってください。例:
+
+- `bitflyer-realtime-lake-run-a.service`
+- `bitflyer-realtime-lake-run-b.service`
+- `bitflyer-realtime-lake-run-c.service`
+
+それぞれ `--workdir` と `--config` を別ディレクトリへ向けます。
+
+## launchd で運用する例
+
+macOS で常駐化する場合は、[ops/launchd/com.goura32.bitflyer-realtime-lake.plist.example](/Users/goura32/Documents/Codex/2026-05-13/python-github-public-bitflyer-realtime-api/ops/launchd/com.goura32.bitflyer-realtime-lake.plist.example) をたたき台として使えます。
+
+1. example 内の `/Users/your-user/...` を実際の絶対パスへ置き換えます
+2. `logs/` ディレクトリを作成します
+3. `~/Library/LaunchAgents/com.goura32.bitflyer-realtime-lake.plist` として保存します
+4. 以下を実行します
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.goura32.bitflyer-realtime-lake.plist 2>/dev/null || true
+launchctl load ~/Library/LaunchAgents/com.goura32.bitflyer-realtime-lake.plist
+launchctl start com.goura32.bitflyer-realtime-lake
+```
+
+状態確認:
+
+```bash
+launchctl list | grep bitflyer-realtime-lake
+tail -f logs/launchd.stdout.log logs/launchd.stderr.log
+```
+
+複数起動したい場合は、plist を複製して `Label`、`--workdir`、`--config`、ログパスをそれぞれ分けてください。
 
 ## 複数起動する場合の workdir 分離
 
@@ -200,10 +284,16 @@ ClickHouse 側の重複排除は `ReplacingMergeTree` を使いますが、重�
 
 - `status` で `unshipped rows` が増え続ける
   ClickHouse 接続情報、到達性、認証情報を確認してください。
+- `docker compose` で ClickHouse が起動しない
+  `docker-compose.clickhouse.yaml` の volume 保存先権限、使用中ポート `8123` / `9000`、メモリ使用量を確認してください。
 - `failed rows` が増える
   writer が再試行中です。`last_error` を SQLite で確認してください。
 - WebSocket が切れる
   collector は 1 秒から最大 30 秒の backoff で自動再接続し、再接続後に全 channel を再 subscribe します。
+- systemd で起動しない
+  `WorkingDirectory`、`ExecStart`、仮想環境の Python パス、service 実行ユーザーの書き込み権限を確認してください。
+- launchd で起動しない
+  plist 内の絶対パス、`logs/` の存在、`launchctl list` の出力、`launchd.stderr.log` を確認してください。
 - Raspberry Pi で遅い
   spool を SSD へ置き、`batch_size` と `flush_interval_seconds` を調整してください。
 
