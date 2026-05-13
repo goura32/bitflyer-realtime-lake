@@ -1,0 +1,31 @@
+bitflyer:
+  endpoint: "wss://ws.lightstream.bitflyer.com/json-rpc"
+  product_codes:
+    - "BTC_JPY"
+    - "FX_BTC_JPY"
+    - "ETH_BTC"
+  channel_types:
+    - "executions"
+    - "ticker"
+    - "board_snapshot"
+    - "board"
+
+collector:
+  instance_id: "auto"
+  reconnect_initial_seconds: 1
+  reconnect_max_seconds: 30
+  receive_timeout_seconds: 60
+
+spool:
+  path: "./spool/events.sqlite3"
+  sqlite_synchronous: "NORMAL"
+
+clickhouse:
+  host: "server.local"
+  port: 8123
+  database: "clickhouse"
+  username: "clickhouse"
+  password: ""
+  batch_size: 1000
+  flush_interval_seconds: 1.0
+  retry_interval_seconds: 5.0

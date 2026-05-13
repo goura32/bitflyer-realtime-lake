@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bitflyer-realtime-lake"
+version = "0.1.0"
+description = "Realtime bitFlyer public channel collector with SQLite spool and ClickHouse sink"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [
+  { name = "Noriaki Ohshima" }
+]
+dependencies = [
+  "clickhouse-connect>=0.8.0",
+  "orjson>=3.10.0",
+  "pydantic>=2.7.0",
+  "python-dotenv>=1.0.0",
+  "PyYAML>=6.0.0",
+  "rich>=13.7.0",
+  "typer>=0.12.0",
+  "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "ruff>=0.4.0",
+]
+
+[project.scripts]
+bitflyer-realtime-lake = "bitflyer_realtime_lake.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bitflyer_realtime_lake"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "integration: tests requiring external services",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008"]
