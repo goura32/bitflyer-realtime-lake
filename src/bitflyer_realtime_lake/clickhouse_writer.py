@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 
 import clickhouse_connect
@@ -20,8 +21,11 @@ TABLE_BY_EVENT_TYPE = {
 }
 
 
-def _to_clickhouse_dt(value: str) -> str:
-    return value.replace("Z", "")
+def _to_clickhouse_dt(value: str) -> datetime:
+    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        raise ValueError(f"received_at must include timezone: {value}")
+    return dt.astimezone(UTC)
 
 
 def _make_client(config: AppConfig, use_database: bool = True):
