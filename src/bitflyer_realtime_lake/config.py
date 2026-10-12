@@ -29,6 +29,9 @@ class CollectorConfig(BaseModel):
 class SpoolConfig(BaseModel):
     path: str = "./spool/events.sqlite3"
     sqlite_synchronous: str = "NORMAL"
+    shipped_retention_hours: float = Field(default=24.0, gt=0)
+    prune_interval_seconds: float = Field(default=10.0, gt=0)
+    prune_batch_size: int = Field(default=2000, gt=0)
 
     @field_validator("sqlite_synchronous")
     @classmethod
@@ -45,8 +48,8 @@ class ClickHouseConfig(BaseModel):
     database: str = "clickhouse"
     username: str = "clickhouse"
     password: str = ""
-    batch_size: int = 1000
-    flush_interval_seconds: float = 1.0
+    batch_size: int = Field(default=1000, gt=0)
+    flush_interval_seconds: float = Field(default=1.0, gt=0)
     retry_interval_seconds: float = 5.0
 
 
