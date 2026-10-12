@@ -19,6 +19,9 @@ collector:
 spool:
   path: "./spool/events.sqlite3"
   sqlite_synchronous: "NORMAL"
+  shipped_retention_hours: 24.0
+  prune_interval_seconds: 10.0
+  prune_batch_size: 2000
 
 clickhouse:
   host: "server.local"
