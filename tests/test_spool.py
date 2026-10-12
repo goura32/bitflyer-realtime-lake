@@ -54,3 +54,25 @@ def test_mark_shipped_updates_shipped_at(tmp_path: Path) -> None:
         assert stats["shipped_rows"] == 1
     finally:
         spool.close()
+
+
+def test_prune_shipped_is_bounded_and_preserves_unshipped(tmp_path: Path) -> None:
+    spool = Spool(tmp_path / "spool.sqlite3")
+    try:
+        for value in ("old", "recent", "pending", "failed"):
+            assert spool.insert_event(make_event(value))
+        rows = spool.fetch_unshipped_rows(10)
+        ids = {row.payload_hash: row.local_id for row in rows}
+        spool.mark_shipped([ids["old"]], shipped_at="2026-01-01T00:00:00.000000Z")
+        spool.mark_shipped([ids["recent"]], shipped_at="2026-10-12T00:00:00.000000Z")
+        spool.mark_failed([ids["failed"]], "temporary failure")
+
+        assert spool.prune_shipped("2026-10-01T00:00:00.000000Z", 1) == 1
+        assert spool.prune_shipped("2026-10-01T00:00:00.000000Z", 1) == 0
+        assert {row.payload_hash for row in spool.fetch_unshipped_rows(10)} == {
+            "pending", "failed"
+        }
+        assert spool.status()["shipped_rows"] == 1
+        assert spool.insert_event(make_event("recent")) is False
+    finally:
+        spool.close()
