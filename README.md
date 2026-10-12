@@ -304,3 +304,79 @@ python -m pytest
 ```
 
 ClickHouse 実 DB が必要なテストは `integration` marker に分ける想定です。既定では unit test のみで動作確認できます。
+
+
+## SQLite spool の容量管理と送信のバッチ化
+
+writer は、最初の未送信行を見つけてから `clickhouse.flush_interval_seconds`
+（既定1秒）まで追加データを待ち、`batch_size`（既定1,000行）に達した場合は
+待たずに送信します。ClickHouse の書き込みが成功した行だけ `shipped_at` を更新します。
+
+送信済み行は既定で24時間保持し、10秒ごとに最大2,000行を削除します。
+設定は `spool.shipped_retention_hours`、`spool.prune_interval_seconds`、
+`spool.prune_batch_size` です。未送信・送信失敗行は削除しません。
+削除された過去のハッシュはローカルSQLiteでは重複判定できなくなりますが、
+ClickHouse の `ReplacingMergeTree` が同じキーの行を最終的に整理します
+（マージ完了前の重複可視性は従来どおりあります）。
+
+SQLite の `DELETE` はファイル容量を自動で縮小しません。空きページは再利用されます。
+既存の大きなDBを縮小する場合は、以下の**停止時コピー**を使用してください。
+運用中のDBに `VACUUM` をかけたり、`-wal` や `-shm` を削除しないでください。
+
+### 既存spoolのオフライン縮小（brl.localの例）
+
+dev.localが正常に収集中であること、ClickHouse送信が成功していて
+未送信行数が少ないことを先に確認します。以下はソースコードを更新した後の操作です。
+**brl.localのサービスを停止してから**実施します。
+
+```bash
+sudo systemctl stop bitflyer-realtime-lake
+sudo systemctl is-active bitflyer-realtime-lake  # inactive を確認
+cd /opt/bitflyer-realtime-lake
+./.venv/bin/python ops/compact_spool.py \
+  --source spool/events.sqlite3 \
+  --destination spool/events.sqlite3.compact \
+  --retention-hours 24 \
+  --service-stopped
+```
+
+このツールは元DBを削除・変更・置換しません。未送信行すべてと直近24時間の
+送信済み行だけを新DBにコピーし、未送信件数とSQLite整合性を検証します。
+コピー先ファイルが既に存在すると失敗します。空き容量が足りない場合も元DBは保持されます。
+
+コピーが成功したら、旧DBのWALを確実にチェックポイントしてから、
+**サービスを停止したまま**同一ファイルシステム内でファイルを切り替えます。
+`PRAGMA wal_checkpoint(TRUNCATE)` の戻り値の先頭が `0`（busyなし）
+であることを確認してください。
+
+```bash
+cd /opt/bitflyer-realtime-lake/spool
+python3 - <<'PY'
+import sqlite3
+with sqlite3.connect("events.sqlite3") as con:
+    result = con.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+    print("checkpoint:", result)
+    assert result[0] == 0
+PY
+mv events.sqlite3 events.sqlite3.before-compact
+for suffix in -wal -shm; do
+  if [ -e "events.sqlite3${suffix}" ]; then
+    mv "events.sqlite3${suffix}" "events.sqlite3.before-compact${suffix}"
+  fi
+done
+mv events.sqlite3.compact events.sqlite3
+sudo systemctl start bitflyer-realtime-lake
+sudo systemctl status bitflyer-realtime-lake --no-pager
+```
+
+**コピー先の`-wal`/`-shm`が残っている場合は切替前に調査してください。**
+切替後は `python -m bitflyer_realtime_lake status`、journal、
+ClickHouse側のINSERT元を確認します。
+`events.sqlite3.before-compact` は確認が終わるまで保持してください。
+旧DBを削除しない限り、ディスク空き容量は大きく増えません。
+新DBで収集を再開した後に旧DBへ戻すと、その間の新規受信データが
+旧DBに存在しないため、単純な巻き戻しはしないでください。
+
+**注意：** ClickHouseが長時間停止すると未送信データは増え続けます。
+データを捨てず、かつ有限のディスク容量を絶対に超えないことは両立できません。
+残容量・未送信件数の監視とアラートは引き続き必要です。
