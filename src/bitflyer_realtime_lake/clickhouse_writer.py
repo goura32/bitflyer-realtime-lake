@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import clickhouse_connect
@@ -136,14 +136,46 @@ class ClickHouseWriter:
         batch_size = self.config.clickhouse.batch_size
         flush_interval = self.config.clickhouse.flush_interval_seconds
         retry_interval = self.config.clickhouse.retry_interval_seconds
+        prune_interval = self.config.spool.prune_interval_seconds
+        loop = asyncio.get_running_loop()
+        next_prune = loop.time() + prune_interval
+        pending_since: float | None = None
+
         while not stop_event.is_set():
+            if loop.time() >= next_prune:
+                cutoff = (
+                    datetime.now(UTC)
+                    - timedelta(hours=self.config.spool.shipped_retention_hours)
+                ).isoformat(timespec="microseconds").replace("+00:00", "Z")
+                try:
+                    deleted = spool.prune_shipped(cutoff, self.config.spool.prune_batch_size)
+                    if deleted:
+                        LOGGER.info("Spool pruned shipped_rows=%s", deleted)
+                except Exception:
+                    LOGGER.exception("Spool pruning failed")
+                next_prune = loop.time() + prune_interval
+
             rows = spool.fetch_unshipped_rows(limit=batch_size)
             if not rows:
+                pending_since = None
                 try:
-                    await asyncio.wait_for(stop_event.wait(), timeout=flush_interval)
+                    await asyncio.wait_for(stop_event.wait(), timeout=min(flush_interval, 1.0))
                 except TimeoutError:
                     pass
                 continue
+
+            # Wait briefly for the next rows instead of shipping 1-3 rows
+            # immediately. The wait starts with the first pending batch.
+            if pending_since is None:
+                pending_since = loop.time()
+            remaining = flush_interval - (loop.time() - pending_since)
+            if len(rows) < batch_size and remaining > 0:
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=min(remaining, 0.2))
+                except TimeoutError:
+                    pass
+                continue
+            pending_since = None
 
             try:
                 await self.insert_rows(rows)
@@ -158,6 +190,7 @@ class ClickHouseWriter:
                     pass
                 continue
 
+            # Mark acknowledged only after both raw and typed table writes succeed.
             local_ids = [row.local_id for row in rows]
             spool.mark_shipped(local_ids)
             LOGGER.info("ClickHouse shipped batch_size=%s", len(rows))
