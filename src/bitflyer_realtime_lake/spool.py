@@ -123,6 +123,28 @@ class Spool:
             [mark_time, *local_ids],
         )
 
+    def prune_shipped(self, older_than: str, limit: int) -> int:
+        """Delete only acknowledged records older than the retention cutoff.
+
+        The existing shipped_at/local_id index keeps the cleanup bounded.
+        Never remove unshipped or failed records.
+        """
+        if limit <= 0:
+            raise ValueError("prune limit must be positive")
+        cursor = self.conn.execute(
+            """
+            DELETE FROM spool_events
+            WHERE local_id IN (
+                SELECT local_id FROM spool_events
+                WHERE shipped_at IS NOT NULL AND shipped_at < ?
+                ORDER BY shipped_at, local_id
+                LIMIT ?
+            )
+            """,
+            (older_than, limit),
+        )
+        return cursor.rowcount
+
     def mark_failed(self, local_ids: list[int], error: str) -> None:
         if not local_ids:
             return
