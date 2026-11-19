@@ -32,3 +32,4 @@ clickhouse:
   batch_size: 1000
   flush_interval_seconds: 1.0
   retry_interval_seconds: 5.0
+  async_insert_busy_timeout_ms: 30000

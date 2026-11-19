@@ -51,6 +51,10 @@ class ClickHouseConfig(BaseModel):
     batch_size: int = Field(default=1000, gt=0)
     flush_interval_seconds: float = Field(default=1.0, gt=0)
     retry_interval_seconds: float = 5.0
+    # Server-side async_insert aggregation window for this collector's
+    # sessions. The writer passes it to ClickHouse per session; see
+    # clickhouse_writer._make_client for why it must stay short.
+    async_insert_busy_timeout_ms: int = Field(default=30000, gt=0)
 
 
 class AppConfig(BaseModel):

@@ -202,3 +202,31 @@ def test_writer_coalesces_pending_rows(tmp_path):
         assert spool.status()["unshipped_rows"] == 0
     finally:
         spool.close()
+def test_make_client_pins_async_insert_settings(monkeypatch):
+    import bitflyer_realtime_lake.clickhouse_writer as writer_module
+    from bitflyer_realtime_lake.config import AppConfig, ClickHouseConfig
+
+    captured = {}
+
+    def fake_get_client(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(writer_module.clickhouse_connect, "get_client", fake_get_client)
+    config = AppConfig(clickhouse=ClickHouseConfig(async_insert_busy_timeout_ms=2000))
+    writer_module._make_client(config)
+
+    settings = captured["settings"]
+    assert settings["async_insert"] == 1
+    # Delivery confirmation must stay on: never trade it away for speed.
+    assert settings["wait_for_async_insert"] == 1
+    assert settings["async_insert_busy_timeout_ms"] == 2000
+    assert settings["async_insert_use_adaptive_busy_timeout"] == 0
+
+
+def test_async_insert_busy_timeout_default_matches_server_profile():
+    from bitflyer_realtime_lake.config import ClickHouseConfig
+
+    # 30000 matches the server profile, so existing deployments that do not
+    # set the new key keep their current behaviour until they opt in.
+    assert ClickHouseConfig().async_insert_busy_timeout_ms == 30000

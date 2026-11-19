@@ -65,6 +65,22 @@ def _make_client(config: AppConfig, use_database: bool = True):
         # upgrade cannot silently change how long inserts may block while
         # the server holds them for async_insert flushing.
         "send_receive_timeout": 300,
+        # Pin the async_insert behaviour per session instead of relying on
+        # the server profile. The profile aggregates inserts for 30 s
+        # (async_insert_busy_timeout_ms=30000); with wait_for_async_insert=1
+        # each of the up to five table inserts in a batch then blocks for
+        # the full aggregation window, which capped throughput at roughly
+        # 1000 rows per 150 s per collector and let the spool fall hours
+        # behind. A short busy timeout keeps each insert's wait small while
+        # wait_for_async_insert=1 still confirms the data was flushed, and
+        # flush_interval_seconds + this wait stays well under the
+        # one-minute visible-latency budget.
+        "settings": {
+            "async_insert": 1,
+            "wait_for_async_insert": 1,
+            "async_insert_busy_timeout_ms": config.clickhouse.async_insert_busy_timeout_ms,
+            "async_insert_use_adaptive_busy_timeout": 0,
+        },
     }
     if use_database:
         kwargs["database"] = config.clickhouse.database
